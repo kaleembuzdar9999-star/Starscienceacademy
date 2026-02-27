@@ -1,6 +1,6 @@
 export interface Student {
   id: number;
-  roll_number: string;
+  roll_number: number;
   full_name: string;
   father_name: string;
   gender: string;
@@ -19,12 +19,20 @@ export interface Student {
   created_at: string;
 }
 
+export interface Teacher {
+  id: number;
+  full_name: string;
+  subject: string;
+  username: string;
+}
+
 export interface User {
   id: number;
   username: string;
-  role: 'admin' | 'student';
+  role: 'admin' | 'student' | 'teacher';
   portal?: 'boys' | 'girls';
   student_id?: number;
+  teacher_id?: number;
 }
 
 export interface Mark {
@@ -35,6 +43,7 @@ export interface Mark {
   total_marks: number;
   exam_type: string;
   date: string;
+  teacher_id?: number;
 }
 
 export interface Attendance {

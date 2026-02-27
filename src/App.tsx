@@ -27,11 +27,32 @@ import {
   Download,
   Share2,
   TrendingUp,
-  Award
+  Award,
+  Star,
+  MessageCircle,
+  AlertCircle,
+  WifiOff
 } from 'lucide-react';
-import { User, Student, Mark, Attendance, Fee } from './types';
+import { User, Student, Mark, Attendance, Fee, Teacher } from './types';
 
 // --- Components ---
+
+const LoadingOverlay = () => (
+  <div className="fixed inset-0 z-[200] bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center">
+    <motion.div
+      animate={{ rotate: 360, scale: [1, 1.2, 1] }}
+      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+    >
+      <Star className="w-16 h-16 text-indigo-600 fill-indigo-600" />
+    </motion.div>
+    <p className="mt-4 font-display font-bold text-slate-900 animate-pulse">STAR ACADEMY LOADING...</p>
+    {!navigator.onLine && (
+      <div className="mt-4 flex items-center gap-2 text-red-600 font-medium">
+        <WifiOff className="w-5 h-5" /> No Internet Connection
+      </div>
+    )}
+  </div>
+);
 
 const Navbar = ({ user, onLogout, onLoginClick }: { user: User | null, onLogout: () => void, onLoginClick: () => void }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -41,7 +62,7 @@ const Navbar = ({ user, onLogout, onLoginClick }: { user: User | null, onLogout:
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center gap-2">
-            <School className="w-8 h-8 text-indigo-600" />
+            <Star className="w-8 h-8 text-indigo-600 fill-indigo-600" />
             <span className="font-display font-bold text-xl tracking-tight text-slate-900 hidden sm:block uppercase">
               STAR ACADEMY CHOTI ZAREEN
             </span>
@@ -114,6 +135,15 @@ const Hero = ({ onLoginClick }: { onLoginClick: () => void }) => (
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
       >
+        <div className="flex justify-center mb-6">
+          <motion.div
+            animate={{ scale: [1, 1.1, 1] }}
+            transition={{ duration: 3, repeat: Infinity }}
+            className="p-4 bg-white rounded-full shadow-xl border border-slate-100"
+          >
+            <Star className="w-12 h-12 text-indigo-600 fill-indigo-600" />
+          </motion.div>
+        </div>
         <span className="inline-block px-4 py-1.5 mb-6 text-sm font-semibold tracking-wide text-indigo-600 uppercase bg-indigo-50 rounded-full">
           Excellence in Education
         </span>
@@ -208,15 +238,14 @@ const Features = () => {
 };
 
 const LoginModal = ({ isOpen, onClose, onLogin }: { isOpen: boolean, onClose: () => void, onLogin: (user: User) => void }) => {
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [portal, setPortal] = useState<'boys' | 'girls'>('boys');
+  const [portal, setPortal] = useState<'boys' | 'girls' | 'admin' | 'teacher'>('boys');
   
   // Sign up fields
   const [fullName, setFullName] = useState('');
   const [fatherName, setFatherName] = useState('');
-  const [gender, setGender] = useState('');
   const [dob, setDob] = useState('');
   const [cnic, setCnic] = useState('');
   const [studentClass, setStudentClass] = useState('11th');
@@ -239,7 +268,7 @@ const LoginModal = ({ isOpen, onClose, onLogin }: { isOpen: boolean, onClose: ()
     setSuccessMsg('');
 
     try {
-      if (isSignUp) {
+      if (mode === 'signup') {
         const res = await fetch('/api/students/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -252,11 +281,24 @@ const LoginModal = ({ isOpen, onClose, onLogin }: { isOpen: boolean, onClose: ()
         const data = await res.json();
         if (res.ok) {
           setSuccessMsg(`Registration successful! Your Roll Number is ${data.rollNumber}. Use it to login with password 'student123'.`);
-          setIsSignUp(false);
-          setUsername(data.rollNumber);
+          setMode('signin');
+          setUsername(data.rollNumber.toString());
           setPassword('student123');
         } else {
           setError(data.error || 'Registration failed');
+        }
+      } else if (mode === 'forgot') {
+        const res = await fetch('/api/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, cnic, portal })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setSuccessMsg(`Your password is: ${data.password}`);
+          setMode('signin');
+        } else {
+          setError(data.error || 'Recovery failed. Check details.');
         }
       } else {
         const res = await fetch('/api/login', {
@@ -291,39 +333,53 @@ const LoginModal = ({ isOpen, onClose, onLogin }: { isOpen: boolean, onClose: ()
         <div className="p-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-display font-bold text-slate-900">
-              {isSignUp ? 'Student Self-Registration' : 'Portal Login'}
+              {mode === 'signup' ? 'Student Self-Registration' : mode === 'forgot' ? 'Recover Password' : 'Portal Login'}
             </h2>
             <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600"><X /></button>
           </div>
 
           {successMsg && (
-            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium">
-              {successMsg}
+            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5" /> {successMsg}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Select Your Portal</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <button 
                   type="button"
                   onClick={() => setPortal('boys')}
-                  className={`py-2 rounded-lg font-medium transition-all ${portal === 'boys' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-slate-100 text-slate-600'}`}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all ${portal === 'boys' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-600'}`}
                 >
-                  Boys Portal
+                  Boys
                 </button>
                 <button 
                   type="button"
                   onClick={() => setPortal('girls')}
-                  className={`py-2 rounded-lg font-medium transition-all ${portal === 'girls' ? 'bg-pink-600 text-white shadow-lg shadow-pink-200' : 'bg-slate-100 text-slate-600'}`}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all ${portal === 'girls' ? 'bg-pink-600 text-white shadow-lg' : 'bg-slate-100 text-slate-600'}`}
                 >
-                  Girls Portal
+                  Girls
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setPortal('teacher')}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all ${portal === 'teacher' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-100 text-slate-600'}`}
+                >
+                  Teacher
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setPortal('admin')}
+                  className={`py-2 rounded-lg text-xs font-bold transition-all ${portal === 'admin' ? 'bg-slate-800 text-white shadow-lg' : 'bg-slate-100 text-slate-600'}`}
+                >
+                  Admin
                 </button>
               </div>
             </div>
 
-            {isSignUp ? (
+            {mode === 'signup' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <input type="text" placeholder="Full Name" required value={fullName} onChange={e => setFullName(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" />
                 <input type="text" placeholder="Father Name" required value={fatherName} onChange={e => setFatherName(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" />
@@ -345,6 +401,23 @@ const LoginModal = ({ isOpen, onClose, onLogin }: { isOpen: boolean, onClose: ()
                 <input type="tel" placeholder="Parent Mobile" required value={parentMobile} onChange={e => setParentMobile(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" />
                 <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" />
                 <input type="text" placeholder="Complete Address" value={address} onChange={e => setAddress(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg md:col-span-2" />
+              </div>
+            ) : mode === 'forgot' ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-indigo-50 rounded-lg text-sm text-indigo-700 flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 mt-0.5" />
+                  <p>Enter your Roll Number and CNIC to recover your password. Admin must enter username.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Username / Roll Number</label>
+                  <input type="text" value={username} onChange={e => setUsername(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" placeholder="e.g. 101" required />
+                </div>
+                {portal !== 'admin' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">CNIC / B-Form</label>
+                    <input type="text" value={cnic} onChange={e => setCnic(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" placeholder="Enter CNIC used during registration" required />
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -381,17 +454,37 @@ const LoginModal = ({ isOpen, onClose, onLogin }: { isOpen: boolean, onClose: ()
               disabled={loading}
               className="w-full btn-primary py-3 text-lg mt-2 flex items-center justify-center gap-2"
             >
-              {loading ? 'Processing...' : (isSignUp ? 'Register Now' : 'Sign In')}
+              {loading ? 'Processing...' : (mode === 'signup' ? 'Register Now' : mode === 'forgot' ? 'Recover Password' : 'Sign In')}
             </button>
 
-            <div className="text-center mt-4">
-              <button 
-                type="button" 
-                onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
-                className="text-sm text-indigo-600 font-semibold hover:underline"
-              >
-                {isSignUp ? 'Already have an account? Login' : 'New Student? Register Yourself'}
-              </button>
+            <div className="flex flex-col gap-2 text-center mt-4">
+              {mode === 'signin' && (
+                <>
+                  <button 
+                    type="button" 
+                    onClick={() => { setMode('signup'); setError(''); }}
+                    className="text-sm text-indigo-600 font-semibold hover:underline"
+                  >
+                    New Student? Register Yourself
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => { setMode('forgot'); setError(''); }}
+                    className="text-sm text-slate-500 font-medium hover:text-indigo-600"
+                  >
+                    Forgot Password?
+                  </button>
+                </>
+              )}
+              {(mode === 'signup' || mode === 'forgot') && (
+                <button 
+                  type="button" 
+                  onClick={() => { setMode('signin'); setError(''); }}
+                  className="text-sm text-indigo-600 font-semibold hover:underline"
+                >
+                  Back to Login
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -402,21 +495,250 @@ const LoginModal = ({ isOpen, onClose, onLogin }: { isOpen: boolean, onClose: ()
 
 // --- Dashboard Views ---
 
+const TeacherPortal = ({ user }: { user: User }) => {
+  const [data, setData] = useState<{ teacher: Teacher, students: Student[], marks: Mark[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'students' | 'marks'>('students');
+  
+  // Mark entry state
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [subject, setSubject] = useState('');
+  const [marksObtained, setMarksObtained] = useState('');
+  const [totalMarks, setTotalMarks] = useState('100');
+  const [examType, setExamType] = useState('Monthly');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await fetch(`/api/teacher/${user.teacher_id}/dashboard`);
+        setData(await res.json());
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [user.teacher_id]);
+
+  const handleAddMarks = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudent) return;
+    
+    try {
+      const res = await fetch('/api/marks/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: selectedStudent.id,
+          subject,
+          marksObtained: parseInt(marksObtained),
+          totalMarks: parseInt(totalMarks),
+          examType,
+          date: new Date().toISOString().split('T')[0],
+          teacherId: user.teacher_id
+        })
+      });
+      if (res.ok) {
+        alert('Marks added successfully!');
+        setMarksObtained('');
+        setSelectedStudent(null);
+        // Refresh data
+        const refreshRes = await fetch(`/api/teacher/${user.teacher_id}/dashboard`);
+        setData(await refreshRes.json());
+      }
+    } catch (err) {
+      alert('Failed to add marks');
+    }
+  };
+
+  const sendWhatsApp = (student: Student, message: string) => {
+    const phone = student.parent_mobile.replace(/\D/g, '');
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  if (loading) return <LoadingOverlay />;
+  if (!data) return <div className="pt-32 text-center">Error loading teacher portal</div>;
+
+  return (
+    <div className="pt-24 pb-12 min-h-screen bg-slate-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col md:flex-row gap-8">
+          <div className="w-full md:w-64 space-y-2">
+            <div className="p-6 bg-white rounded-2xl border border-slate-100 shadow-sm mb-4">
+              <h3 className="font-bold text-slate-900">{data.teacher.full_name}</h3>
+              <p className="text-sm text-slate-500">{data.teacher.subject} Teacher</p>
+            </div>
+            <button 
+              onClick={() => setActiveTab('students')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === 'students' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+            >
+              <Users className="w-5 h-5" /> My Students
+            </button>
+            <button 
+              onClick={() => setActiveTab('marks')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === 'marks' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+            >
+              <Award className="w-5 h-5" /> Manage Results
+            </button>
+          </div>
+
+          <div className="flex-1">
+            {activeTab === 'students' && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100">
+                  <h3 className="text-xl font-bold text-slate-900">Student List</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-slate-500 text-xs font-semibold uppercase">
+                      <tr>
+                        <th className="px-6 py-4">Roll No</th>
+                        <th className="px-6 py-4">Name</th>
+                        <th className="px-6 py-4">Class</th>
+                        <th className="px-6 py-4">WhatsApp</th>
+                        <th className="px-6 py-4">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.students.map(s => (
+                        <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 font-mono text-sm font-medium text-indigo-600">{s.roll_number}</td>
+                          <td className="px-6 py-4 font-semibold text-slate-900">{s.full_name}</td>
+                          <td className="px-6 py-4 text-slate-600 text-sm">{s.class} ({s.group_name})</td>
+                          <td className="px-6 py-4">
+                            <button 
+                              onClick={() => sendWhatsApp(s, `Assalam-o-Alaikum, this is ${data.teacher.full_name} from Star Academy. I wanted to discuss ${s.full_name}'s performance.`)}
+                              className="p-2 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-colors"
+                            >
+                              <MessageCircle className="w-5 h-5" />
+                            </button>
+                          </td>
+                          <td className="px-6 py-4">
+                            <button 
+                              onClick={() => { setSelectedStudent(s); setActiveTab('marks'); setSubject(data.teacher.subject); }}
+                              className="text-emerald-600 hover:text-emerald-800 font-bold text-sm"
+                            >
+                              Add Marks
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'marks' && (
+              <div className="space-y-8">
+                <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm">
+                  <h3 className="text-xl font-bold text-slate-900 mb-6">Enter Student Marks</h3>
+                  <form onSubmit={handleAddMarks} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Select Student</label>
+                      <select 
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                        value={selectedStudent?.id || ''}
+                        onChange={(e) => setSelectedStudent(data.students.find(s => s.id === parseInt(e.target.value)) || null)}
+                        required
+                      >
+                        <option value="">Choose a student...</option>
+                        {data.students.map(s => (
+                          <option key={s.id} value={s.id}>{s.roll_number} - {s.full_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Subject</label>
+                      <input type="text" value={subject} onChange={e => setSubject(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Marks Obtained</label>
+                      <input type="number" value={marksObtained} onChange={e => setMarksObtained(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Total Marks</label>
+                      <input type="number" value={totalMarks} onChange={e => setTotalMarks(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Exam Type</label>
+                      <select value={examType} onChange={e => setExamType(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                        <option value="Class Test">Class Test</option>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Mid-Term">Mid-Term</option>
+                        <option value="Final">Final</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <button type="submit" className="w-full btn-primary py-3 bg-emerald-600 hover:bg-emerald-700">Submit Marks</button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                  <div className="p-6 border-b border-slate-100">
+                    <h3 className="text-xl font-bold text-slate-900">Recent Entries</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 text-slate-500 text-xs font-semibold uppercase">
+                        <tr>
+                          <th className="px-6 py-4">Date</th>
+                          <th className="px-6 py-4">Student</th>
+                          <th className="px-6 py-4">Subject</th>
+                          <th className="px-6 py-4">Marks</th>
+                          <th className="px-6 py-4">Type</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {data.marks.slice().reverse().map(m => {
+                          const student = data.students.find(s => s.id === m.student_id);
+                          return (
+                            <tr key={m.id}>
+                              <td className="px-6 py-4 text-sm text-slate-500">{m.date}</td>
+                              <td className="px-6 py-4 font-semibold text-slate-900">{student?.full_name}</td>
+                              <td className="px-6 py-4 text-slate-600 text-sm">{m.subject}</td>
+                              <td className="px-6 py-4 font-bold text-indigo-600">{m.marks_obtained}/{m.total_marks}</td>
+                              <td className="px-6 py-4">
+                                <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-bold uppercase">{m.exam_type}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AdminDashboard = ({ user }: { user: User }) => {
-  const [stats, setStats] = useState({ totalBoys: 0, totalGirls: 0, totalFees: 0, pendingFees: 0 });
+  const [stats, setStats] = useState({ totalBoys: 0, totalGirls: 0, totalFees: 0, pendingFees: 0, totalTeachers: 0 });
   const [students, setStudents] = useState<Student[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'register' | 'fees'>('overview');
+  const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'attendance' | 'fees'>('overview');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [statsRes, studentsRes] = await Promise.all([
+        const today = new Date().toISOString().split('T')[0];
+        const [statsRes, studentsRes, attendanceRes] = await Promise.all([
           fetch('/api/admin/stats'),
-          fetch('/api/students')
+          fetch('/api/students'),
+          fetch(`/api/attendance/today?date=${today}`)
         ]);
         setStats(await statsRes.json());
         setStudents(await studentsRes.json());
+        setAttendance(await attendanceRes.json());
       } catch (err) {
         console.error(err);
       } finally {
@@ -426,7 +748,37 @@ const AdminDashboard = ({ user }: { user: User }) => {
     fetchData();
   }, []);
 
-  if (loading) return <div className="pt-32 text-center">Loading Dashboard...</div>;
+  const handleMarkAttendance = async (studentId: number, status: 'present' | 'absent') => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await fetch('/api/attendance/mark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, date: today, status })
+      });
+      if (res.ok) {
+        // Update local state
+        const updatedAttendance = [...attendance];
+        const index = updatedAttendance.findIndex(a => a.student_id === studentId);
+        if (index > -1) {
+          updatedAttendance[index].status = status;
+        } else {
+          updatedAttendance.push({ id: 0, student_id: studentId, date: today, status });
+        }
+        setAttendance(updatedAttendance);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const sendWhatsApp = (student: Student, message: string) => {
+    const phone = student.parent_mobile.replace(/\D/g, '');
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  if (loading) return <LoadingOverlay />;
 
   return (
     <div className="pt-24 pb-12 min-h-screen bg-slate-50">
@@ -447,10 +799,10 @@ const AdminDashboard = ({ user }: { user: User }) => {
               <Users className="w-5 h-5" /> Students
             </button>
             <button 
-              onClick={() => setActiveTab('register')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === 'register' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+              onClick={() => setActiveTab('attendance')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === 'attendance' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
             >
-              <Plus className="w-5 h-5" /> Registration
+              <CheckCircle2 className="w-5 h-5" /> Attendance
             </button>
             <button 
               onClick={() => setActiveTab('fees')}
@@ -470,8 +822,8 @@ const AdminDashboard = ({ user }: { user: User }) => {
                     <div className="text-3xl font-bold text-slate-900">{stats.totalBoys}</div>
                   </div>
                   <div className="p-6 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                    <div className="text-slate-500 text-sm font-semibold uppercase mb-2">Total Girls</div>
-                    <div className="text-3xl font-bold text-slate-900">{stats.totalGirls}</div>
+                    <div className="text-slate-500 text-sm font-semibold uppercase mb-2">Teachers</div>
+                    <div className="text-3xl font-bold text-slate-900">{stats.totalTeachers}</div>
                   </div>
                   <div className="p-6 bg-white rounded-2xl border border-slate-100 shadow-sm">
                     <div className="text-slate-500 text-sm font-semibold uppercase mb-2">Fees Collected</div>
@@ -518,6 +870,7 @@ const AdminDashboard = ({ user }: { user: User }) => {
                         <th className="px-6 py-4">Name</th>
                         <th className="px-6 py-4">Class</th>
                         <th className="px-6 py-4">Portal</th>
+                        <th className="px-6 py-4">WhatsApp</th>
                         <th className="px-6 py-4">Actions</th>
                       </tr>
                     </thead>
@@ -533,6 +886,14 @@ const AdminDashboard = ({ user }: { user: User }) => {
                             </span>
                           </td>
                           <td className="px-6 py-4">
+                            <button 
+                              onClick={() => sendWhatsApp(s, `Assalam-o-Alaikum, this is Star Academy Administration. We are contacting you regarding ${s.full_name}.`)}
+                              className="p-2 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-colors"
+                            >
+                              <MessageCircle className="w-5 h-5" />
+                            </button>
+                          </td>
+                          <td className="px-6 py-4">
                             <button className="text-indigo-600 hover:text-indigo-800 font-medium text-sm">View Details</button>
                           </td>
                         </tr>
@@ -543,40 +904,60 @@ const AdminDashboard = ({ user }: { user: User }) => {
               </div>
             )}
 
-            {activeTab === 'register' && (
-              <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm">
-                <h3 className="text-xl font-bold text-slate-900 mb-6">Register New Student</h3>
-                <form className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <h4 className="font-semibold text-slate-700 border-b pb-2">Personal Info</h4>
-                    <input type="text" placeholder="Full Name" className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" />
-                    <input type="text" placeholder="Father Name" className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" />
-                    <select className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-                      <option>Gender</option>
-                      <option>Male</option>
-                      <option>Female</option>
-                    </select>
+            {activeTab === 'attendance' && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">Daily Attendance</h3>
+                    <p className="text-sm text-slate-500">Marking for: {new Date().toLocaleDateString()}</p>
                   </div>
-                  <div className="space-y-4">
-                    <h4 className="font-semibold text-slate-700 border-b pb-2">Academic Info</h4>
-                    <select className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-                      <option>Class</option>
-                      <option>11th</option>
-                      <option>12th</option>
-                    </select>
-                    <select className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-                      <option>Group</option>
-                      <option>Pre-Medical</option>
-                      <option>Pre-Engineering</option>
-                      <option>ICS</option>
-                      <option>FA</option>
-                    </select>
-                    <input type="text" placeholder="Punjab Board Reg No" className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg" />
-                  </div>
-                  <div className="md:col-span-2">
-                    <button type="button" className="btn-primary w-full py-3">Register Student & Generate Credentials</button>
-                  </div>
-                </form>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-slate-500 text-xs font-semibold uppercase">
+                      <tr>
+                        <th className="px-6 py-4">Roll No</th>
+                        <th className="px-6 py-4">Name</th>
+                        <th className="px-6 py-4">Status</th>
+                        <th className="px-6 py-4">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {students.map(s => {
+                        const att = attendance.find(a => a.student_id === s.id);
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4 font-mono text-sm font-medium text-indigo-600">{s.roll_number}</td>
+                            <td className="px-6 py-4 font-semibold text-slate-900">{s.full_name}</td>
+                            <td className="px-6 py-4">
+                              {att ? (
+                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${att.status === 'present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                  {att.status}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-xs italic">Not Marked</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 flex gap-2">
+                              <button 
+                                onClick={() => handleMarkAttendance(s.id, 'present')}
+                                className={`px-3 py-1 rounded text-xs font-bold transition-all ${att?.status === 'present' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-50'}`}
+                              >
+                                Present
+                              </button>
+                              <button 
+                                onClick={() => handleMarkAttendance(s.id, 'absent')}
+                                className={`px-3 py-1 rounded text-xs font-bold transition-all ${att?.status === 'absent' ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-red-50'}`}
+                              >
+                                Absent
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -604,7 +985,7 @@ const StudentHub = ({ user }: { user: User }) => {
     fetchData();
   }, [user.student_id]);
 
-  if (loading) return <div className="pt-32 text-center">Loading Student Hub...</div>;
+  if (loading) return <LoadingOverlay />;
   if (!data) return <div className="pt-32 text-center">Error loading data</div>;
 
   const attendancePercentage = data.attendance.length > 0 
@@ -622,7 +1003,7 @@ const StudentHub = ({ user }: { user: User }) => {
                 <UserCircle className="w-20 h-20 text-indigo-600" />
               </div>
               <h2 className="text-2xl font-display font-bold text-slate-900">{data.student.full_name}</h2>
-              <p className="text-slate-500 font-medium mb-4">{data.student.roll_number}</p>
+              <p className="text-slate-500 font-medium mb-4">Roll No: {data.student.roll_number}</p>
               <div className="flex justify-center gap-2 mb-6">
                 <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold uppercase">{data.student.class}</span>
                 <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold uppercase">{data.student.group_name}</span>
@@ -641,18 +1022,18 @@ const StudentHub = ({ user }: { user: User }) => {
 
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
               <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-indigo-600" /> Quick Actions
+                <Calendar className="w-5 h-5 text-indigo-600" /> Attendance Log
               </h3>
-              <div className="space-y-2">
-                <button className="w-full btn-secondary flex items-center justify-between">
-                  Download Result Card <Download className="w-4 h-4" />
-                </button>
-                <button className="w-full btn-secondary flex items-center justify-between">
-                  Pay Fee Online <CreditCard className="w-4 h-4" />
-                </button>
-                <button className="w-full btn-secondary flex items-center justify-between">
-                  Share Progress <Share2 className="w-4 h-4" />
-                </button>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                {data.attendance.slice().reverse().map(a => (
+                  <div key={a.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg text-sm">
+                    <span className="text-slate-600">{a.date}</span>
+                    <span className={`font-bold uppercase text-[10px] px-2 py-0.5 rounded ${a.status === 'present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                      {a.status}
+                    </span>
+                  </div>
+                ))}
+                {data.attendance.length === 0 && <p className="text-center text-slate-400 text-xs py-4">No attendance marked yet.</p>}
               </div>
             </div>
           </div>
@@ -666,16 +1047,22 @@ const StudentHub = ({ user }: { user: User }) => {
                   <Award className="w-8 h-8 opacity-80" />
                   <span className="text-xs font-bold uppercase tracking-wider opacity-80">Latest Result</span>
                 </div>
-                <div className="text-4xl font-bold mb-1">A+</div>
+                <div className="text-4xl font-bold mb-1">
+                  {data.marks.length > 0 ? (data.marks[data.marks.length-1].marks_obtained / data.marks[data.marks.length-1].total_marks >= 0.8 ? 'A+' : 'A') : 'N/A'}
+                </div>
                 <div className="text-sm opacity-80">Overall Performance Grade</div>
               </div>
               <div className="p-6 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl text-white shadow-lg shadow-emerald-200">
                 <div className="flex justify-between items-start mb-4">
                   <TrendingUp className="w-8 h-8 opacity-80" />
-                  <span className="text-xs font-bold uppercase tracking-wider opacity-80">Monthly Test</span>
+                  <span className="text-xs font-bold uppercase tracking-wider opacity-80">Academic Average</span>
                 </div>
-                <div className="text-4xl font-bold mb-1">92%</div>
-                <div className="text-sm opacity-80">Average Score this Month</div>
+                <div className="text-4xl font-bold mb-1">
+                  {data.marks.length > 0 
+                    ? (data.marks.reduce((acc, m) => acc + (m.marks_obtained/m.total_marks), 0) / data.marks.length * 100).toFixed(0)
+                    : 0}%
+                </div>
+                <div className="text-sm opacity-80">Average Score across subjects</div>
               </div>
             </div>
 
@@ -829,7 +1216,10 @@ export default function App() {
                       referrerPolicy="no-referrer"
                     />
                     <div className="absolute -bottom-6 -left-6 p-6 bg-indigo-600 text-white rounded-2xl shadow-xl hidden sm:block">
-                      <div className="text-3xl font-bold">BISE DGK</div>
+                      <div className="flex items-center gap-3 mb-1">
+                        <Star className="w-8 h-8 text-white fill-white" />
+                        <div className="text-3xl font-bold">BISE DGK</div>
+                      </div>
                       <div className="text-sm font-medium opacity-80">Official Affiliation</div>
                     </div>
                   </div>
@@ -889,43 +1279,6 @@ export default function App() {
                 </div>
               </div>
             </section>
-
-            {/* Footer */}
-            <footer className="bg-slate-900 text-white py-16">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
-                  <div>
-                    <div className="flex items-center gap-2 mb-6">
-                      <School className="w-8 h-8 text-indigo-400" />
-                      <span className="font-display font-bold text-xl tracking-tight">STAR SCIENCE ACADEMY</span>
-                    </div>
-                    <p className="text-slate-400 leading-relaxed">
-                      Modern intermediate education with AI-powered management systems for 11th and 12th classes.
-                    </p>
-                  </div>
-                  <div>
-                    <h4 className="font-bold mb-6">Quick Links</h4>
-                    <ul className="space-y-4 text-slate-400">
-                      <li><a href="#home" className="hover:text-white transition-colors">Home</a></li>
-                      <li><a href="#about" className="hover:text-white transition-colors">About Us</a></li>
-                      <li><a href="#portals" className="hover:text-white transition-colors">Portals</a></li>
-                      <li><a href="#" className="hover:text-white transition-colors">Contact</a></li>
-                    </ul>
-                  </div>
-                  <div>
-                    <h4 className="font-bold mb-6">Contact Info</h4>
-                    <ul className="space-y-4 text-slate-400">
-                      <li className="flex items-center gap-3"><Clock className="w-5 h-5" /> 8:00 AM – 6:00 PM</li>
-                      <li className="flex items-center gap-3"><LayoutDashboard className="w-5 h-5" /> Choti Zareen, DG Khan</li>
-                      <li className="flex items-center gap-3"><ShieldCheck className="w-5 h-5" /> Affiliated with BISE DGK</li>
-                    </ul>
-                  </div>
-                </div>
-                <div className="pt-8 border-t border-slate-800 text-center text-slate-500 text-sm">
-                  © 2026 Star Science Academy Choti Zareen. All rights reserved.
-                </div>
-              </div>
-            </footer>
           </motion.div>
         ) : (
           <motion.div 
@@ -934,7 +1287,13 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            {user.role === 'admin' ? <AdminDashboard user={user} /> : <StudentHub user={user} />}
+            {user.role === 'admin' ? (
+              <AdminDashboard user={user} />
+            ) : user.role === 'teacher' ? (
+              <TeacherPortal user={user} />
+            ) : (
+              <StudentHub user={user} />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -944,6 +1303,41 @@ export default function App() {
         onClose={() => setIsLoginOpen(false)} 
         onLogin={handleLogin} 
       />
+
+      <footer className="bg-slate-900 text-white py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
+            <div>
+              <div className="flex items-center gap-2 mb-6">
+                <Star className="w-8 h-8 text-indigo-400 fill-indigo-400" />
+                <span className="font-display font-bold text-xl tracking-tight uppercase">STAR ACADEMY CHOTI ZAREEN</span>
+              </div>
+              <p className="text-slate-400 leading-relaxed">
+                Modern intermediate education with AI-powered management systems for 11th and 12th classes.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-bold mb-6">Quick Links</h4>
+              <ul className="space-y-4 text-slate-400">
+                <li><a href="#home" className="hover:text-white transition-colors">Home</a></li>
+                <li><a href="#about" className="hover:text-white transition-colors">About Us</a></li>
+                <li><a href="#portals" className="hover:text-white transition-colors">Portals</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-bold mb-6">Contact Info</h4>
+              <ul className="space-y-4 text-slate-400">
+                <li className="flex items-center gap-3"><MessageCircle className="w-5 h-5 text-indigo-400" /> WhatsApp Support Available</li>
+                <li className="flex items-center gap-3"><LayoutDashboard className="w-5 h-5 text-indigo-400" /> Choti Zareen, DG Khan</li>
+                <li className="flex items-center gap-3"><ShieldCheck className="w-5 h-5 text-indigo-400" /> Affiliated with BISE DGK</li>
+              </ul>
+            </div>
+          </div>
+          <div className="pt-8 border-t border-slate-800 text-center text-slate-500 text-sm">
+            © {new Date().getFullYear()} Star Academy Choti Zareen. All rights reserved.
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

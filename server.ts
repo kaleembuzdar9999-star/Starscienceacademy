@@ -18,15 +18,25 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE,
     password TEXT,
-    role TEXT, -- 'admin', 'student'
+    role TEXT, -- 'admin', 'student', 'teacher'
     portal TEXT, -- 'boys', 'girls'
     student_id INTEGER,
-    FOREIGN KEY(student_id) REFERENCES students(id)
+    teacher_id INTEGER,
+    FOREIGN KEY(student_id) REFERENCES students(id),
+    FOREIGN KEY(teacher_id) REFERENCES teachers(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS teachers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT,
+    subject TEXT,
+    username TEXT UNIQUE,
+    password TEXT
   );
 
   CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    roll_number TEXT UNIQUE,
+    roll_number INTEGER UNIQUE,
     full_name TEXT,
     father_name TEXT,
     gender TEXT,
@@ -61,7 +71,9 @@ db.exec(`
     total_marks INTEGER,
     exam_type TEXT, -- 'Class Test', 'Monthly', 'Mid-Term', 'Final'
     date TEXT,
-    FOREIGN KEY(student_id) REFERENCES students(id)
+    teacher_id INTEGER,
+    FOREIGN KEY(student_id) REFERENCES students(id),
+    FOREIGN KEY(teacher_id) REFERENCES teachers(id)
   );
 
   CREATE TABLE IF NOT EXISTS fees (
@@ -80,6 +92,13 @@ db.exec(`
 const adminExists = db.prepare("SELECT * FROM users WHERE role = 'admin'").get();
 if (!adminExists) {
   db.prepare("INSERT INTO users (username, password, role) VALUES (?, ?, ?)").run("admin", "admin123", "admin");
+}
+
+// Seed a default teacher for testing
+const teacherExists = db.prepare("SELECT * FROM teachers WHERE username = 'teacher1'").get();
+if (!teacherExists) {
+  const res = db.prepare("INSERT INTO teachers (full_name, subject, username, password) VALUES (?, ?, ?, ?)").run("Default Teacher", "Physics", "teacher1", "teacher123");
+  db.prepare("INSERT INTO users (username, password, role, teacher_id) VALUES (?, ?, ?, ?)").run("teacher1", "teacher123", "teacher", res.lastInsertRowid);
 }
 
 async function startServer() {
@@ -103,13 +122,33 @@ async function startServer() {
     }
   });
 
+  app.post("/api/forgot-password", (req, res) => {
+    const { username, cnic, portal } = req.body;
+    let user;
+    if (portal === 'admin') {
+      user = db.prepare("SELECT * FROM users WHERE username = ? AND role = 'admin'").get(username);
+    } else {
+      const student = db.prepare("SELECT * FROM students WHERE roll_number = ? AND cnic = ?").get(username, cnic);
+      if (student) {
+        user = db.prepare("SELECT * FROM users WHERE student_id = ?").get(student.id);
+      }
+    }
+
+    if (user) {
+      res.json({ password: user.password });
+    } else {
+      res.status(404).json({ error: "User not found or details mismatch" });
+    }
+  });
+
   app.get("/api/admin/stats", (req, res) => {
     const totalBoys = db.prepare("SELECT COUNT(*) as count FROM students WHERE portal = 'boys'").get().count;
     const totalGirls = db.prepare("SELECT COUNT(*) as count FROM students WHERE portal = 'girls'").get().count;
     const totalFees = db.prepare("SELECT SUM(amount) as total FROM fees WHERE status = 'paid'").get().total || 0;
     const pendingFees = db.prepare("SELECT SUM(amount) as total FROM fees WHERE status = 'unpaid'").get().total || 0;
+    const totalTeachers = db.prepare("SELECT COUNT(*) as count FROM teachers").get().count;
     
-    res.json({ totalBoys, totalGirls, totalFees, pendingFees });
+    res.json({ totalBoys, totalGirls, totalFees, pendingFees, totalTeachers });
   });
 
   app.get("/api/students", (req, res) => {
@@ -125,7 +164,10 @@ async function startServer() {
 
   app.post("/api/students/register", (req, res) => {
     const s = req.body;
-    const rollNumber = `SSA-${Date.now().toString().slice(-6)}`;
+    
+    // Find next roll number starting from 100
+    const lastStudent = db.prepare("SELECT roll_number FROM students ORDER BY roll_number DESC LIMIT 1").get();
+    const rollNumber = lastStudent ? Math.max(100, lastStudent.roll_number + 1) : 100;
     
     try {
       const result = db.prepare(`
@@ -143,7 +185,7 @@ async function startServer() {
       const studentId = result.lastInsertRowid;
       // Create user account
       db.prepare("INSERT INTO users (username, password, role, portal, student_id) VALUES (?, ?, ?, ?, ?)")
-        .run(rollNumber, "student123", "student", s.portal, studentId);
+        .run(rollNumber.toString(), "student123", "student", s.portal, studentId);
 
       res.json({ success: true, rollNumber });
     } catch (error) {
@@ -161,18 +203,39 @@ async function startServer() {
     res.json({ student, attendance, marks, fees });
   });
 
+  app.get("/api/teacher/:id/dashboard", (req, res) => {
+    const teacherId = req.params.id;
+    const teacher = db.prepare("SELECT * FROM teachers WHERE id = ?").get(teacherId);
+    const students = db.prepare("SELECT * FROM students").all();
+    const marks = db.prepare("SELECT * FROM marks WHERE teacher_id = ?").all(teacherId);
+    
+    res.json({ teacher, students, marks });
+  });
+
   app.post("/api/marks/add", (req, res) => {
-    const { studentId, subject, marksObtained, totalMarks, examType, date } = req.body;
-    db.prepare("INSERT INTO marks (student_id, subject, marks_obtained, total_marks, exam_type, date) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(studentId, subject, marksObtained, totalMarks, examType, date);
+    const { studentId, subject, marksObtained, totalMarks, examType, date, teacherId } = req.body;
+    db.prepare("INSERT INTO marks (student_id, subject, marks_obtained, total_marks, exam_type, date, teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(studentId, subject, marksObtained, totalMarks, examType, date, teacherId);
     res.json({ success: true });
   });
 
   app.post("/api/attendance/mark", (req, res) => {
     const { studentId, date, status } = req.body;
-    db.prepare("INSERT INTO attendance (student_id, date, status) VALUES (?, ?, ?)")
-      .run(studentId, date, status);
+    // Check if attendance already exists for this date
+    const existing = db.prepare("SELECT id FROM attendance WHERE student_id = ? AND date = ?").get(studentId, date);
+    if (existing) {
+      db.prepare("UPDATE attendance SET status = ? WHERE id = ?").run(status, existing.id);
+    } else {
+      db.prepare("INSERT INTO attendance (student_id, date, status) VALUES (?, ?, ?)")
+        .run(studentId, date, status);
+    }
     res.json({ success: true });
+  });
+
+  app.get("/api/attendance/today", (req, res) => {
+    const { date } = req.query;
+    const attendance = db.prepare("SELECT * FROM attendance WHERE date = ?").all(date);
+    res.json(attendance);
   });
 
   app.post("/api/fees/generate", (req, res) => {
