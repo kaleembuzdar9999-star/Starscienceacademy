@@ -4,7 +4,6 @@ import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import cors from "cors"; // [پہلا قدم: CORS امپورٹ کیا]
 
 dotenv.config();
 
@@ -102,11 +101,74 @@ if (!teacherExists) {
   db.prepare("INSERT INTO users (username, password, role, teacher_id) VALUES (?, ?, ?, ?)").run("teacher1", "teacher123", "teacher", res.lastInsertRowid);
 }
 
+// Seed test students, attendance, marks, and fees if empty
+const studentsCount = db.prepare("SELECT COUNT(*) as count FROM students").get().count;
+if (studentsCount === 0) {
+  console.log("Seeding initial school database...");
+  const seedStudents = [
+    { name: "Muhammad Ali", father: "Imran Ali", gender: "Male", cnic: "32102-1234567-1", class: "11th", group: "Pre-Engineering", portal: "boys", marks: 980 },
+    { name: "Ayesha Fatima", father: "Kamran Khan", gender: "Female", cnic: "32102-2345678-2", class: "12th", group: "Pre-Medical", portal: "girls", marks: 1045 },
+    { name: "Hamza Tariq", father: "Tariq Mahmood", gender: "Male", cnic: "32102-3456789-3", class: "11th", group: "ICS", portal: "boys", marks: 890 },
+    { name: "Zainab Bibi", father: "Sajid Rashid", gender: "Female", cnic: "32102-4567890-4", class: "12th", group: "ICS", portal: "girls", marks: 940 },
+    { name: "Usman Ghani", father: "Abdul Rehman", gender: "Male", cnic: "32102-5678901-5", class: "11th", group: "Pre-Medical", portal: "boys", marks: 780 }
+  ];
+
+  let currentRoll = 100;
+  for (const s of seedStudents) {
+    const res = db.prepare(`
+      INSERT INTO students (
+        roll_number, full_name, father_name, gender, dob, cnic, 
+        class, group_name, board_reg_no, prev_marks, prev_percentage,
+        student_mobile, parent_mobile, email, address, portal
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      currentRoll, s.name, s.father, s.gender, "2007-06-15", s.cnic,
+      s.class, s.group, `REG-${currentRoll}`, s.marks, (s.marks / 1100 * 100).toFixed(2),
+      "+923001234567", "+923007654321", `${s.name.toLowerCase().replace(" ", "")}@star.edu`, "Choti Zareen, DG Khan", s.portal
+    );
+    
+    const studentId = res.lastInsertRowid;
+    
+    // User Account
+    db.prepare("INSERT INTO users (username, password, role, portal, student_id) VALUES (?, ?, ?, ?, ?)")
+      .run(currentRoll.toString(), "student123", "student", s.portal, studentId);
+
+    // Seed attendance records for past 5 days
+    const dates = ["2026-06-09", "2026-06-10", "2026-06-11", "2026-06-12", "2026-06-13"];
+    for (const d of dates) {
+      const status = Math.random() > 0.15 ? "present" : "absent";
+      db.prepare("INSERT INTO attendance (student_id, date, status) VALUES (?, ?, ?)")
+        .run(studentId, d, status);
+    }
+
+    // Seed marks for subjects
+    const subjects = ["Physics", "Chemistry", "Biology", "Mathematics"];
+    const exams = ["Class Test", "Monthly", "Mid-Term"];
+    for (const sub of subjects) {
+      for (const ex of exams) {
+        const val = s.marks / 1100;
+        const score = Math.floor(Math.max(40, Math.min(100, val * 100 + (Math.random() * 20 - 10))));
+        db.prepare("INSERT INTO marks (student_id, subject, marks_obtained, total_marks, exam_type, date, teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(studentId, sub, score, 100, ex, "2026-06-01", 1);
+      }
+    }
+
+    // Seed fees
+    db.prepare("INSERT INTO fees (student_id, month, amount, due_date, status, voucher_id) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(studentId, "April", 2500, "2026-04-10", "paid", `VOU-${currentRoll}-APR`);
+    db.prepare("INSERT INTO fees (student_id, month, amount, due_date, status, voucher_id) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(studentId, "May", 2500, "2026-05-10", "paid", `VOU-${currentRoll}-MAY`);
+    db.prepare("INSERT INTO fees (student_id, month, amount, due_date, status, voucher_id) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(studentId, "June", 2500, "2026-06-10", Math.random() > 0.4 ? "paid" : "unpaid", `VOU-${currentRoll}-JUN`);
+
+    currentRoll++;
+  }
+}
+
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000; // Railway کے لیے پورٹ کی سیٹنگ درست کی
+  const PORT = 3000;
 
-  app.use(cors()); // [دوسرا قدم: CORS کو ایکٹیویٹ کیا]
   app.use(express.json());
 
   // API Routes
@@ -150,7 +212,66 @@ async function startServer() {
     const pendingFees = db.prepare("SELECT SUM(amount) as total FROM fees WHERE status = 'unpaid'").get().total || 0;
     const totalTeachers = db.prepare("SELECT COUNT(*) as count FROM teachers").get().count;
     
-    res.json({ totalBoys, totalGirls, totalFees, pendingFees, totalTeachers });
+    // Top 5 Students calculation
+    const topStudents = db.prepare(`
+      SELECT s.id, s.roll_number, s.full_name, s.class, s.group_name, s.portal,
+             ROUND(COALESCE(
+               (SELECT AVG(CAST(m.marks_obtained AS REAL) / m.total_marks * 100) FROM marks m WHERE m.student_id = s.id),
+               s.prev_percentage
+             ), 1) as performance
+      FROM students s
+      ORDER BY performance DESC
+      LIMIT 5
+    `).all();
+
+    // Fee trend by month
+    const feeTrends = db.prepare(`
+      SELECT month, 
+             SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as collected,
+             SUM(CASE WHEN status = 'unpaid' THEN amount ELSE 0 END) as pending
+      FROM fees
+      GROUP BY month
+      ORDER BY id ASC
+    `).all();
+
+    // Attendance stats
+    const attendanceStats = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN s.portal = 'boys' AND a.status = 'present' THEN 1 ELSE 0 END) as presentBoys,
+        SUM(CASE WHEN s.portal = 'boys' AND a.status = 'absent' THEN 1 ELSE 0 END) as absentBoys,
+        SUM(CASE WHEN s.portal = 'girls' AND a.status = 'present' THEN 1 ELSE 0 END) as presentGirls,
+        SUM(CASE WHEN s.portal = 'girls' AND a.status = 'absent' THEN 1 ELSE 0 END) as absentGirls
+      FROM attendance a
+      JOIN students s ON a.student_id = s.id
+    `).get();
+
+    // Subject Performance chart data
+    const subjectPerformance = db.prepare(`
+      SELECT subject as label, ROUND(AVG(CAST(marks_obtained AS REAL) / total_marks * 100), 1) as value
+      FROM marks
+      GROUP BY subject
+    `).all();
+
+    // Retrieve all issued fee vouchers with student data
+    const allFees = db.prepare(`
+      SELECT f.*, s.roll_number, s.full_name
+      FROM fees f
+      JOIN students s ON f.student_id = s.id
+      ORDER BY f.id DESC
+    `).all();
+
+    res.json({ 
+      totalBoys, 
+      totalGirls, 
+      totalFees, 
+      pendingFees, 
+      totalTeachers,
+      topStudents,
+      feeTrends,
+      attendanceStats,
+      subjectPerformance,
+      allFees
+    });
   });
 
   app.get("/api/students", (req, res) => {
@@ -210,8 +331,54 @@ async function startServer() {
     const teacher = db.prepare("SELECT * FROM teachers WHERE id = ?").get(teacherId);
     const students = db.prepare("SELECT * FROM students").all();
     const marks = db.prepare("SELECT * FROM marks WHERE teacher_id = ?").all(teacherId);
-    
-    res.json({ teacher, students, marks });
+
+    // Top 5 students specifically for the teacher's subject if possible, or overall
+    const topStudents = db.prepare(`
+      SELECT s.id, s.roll_number, s.full_name, s.class, s.group_name, s.portal,
+             ROUND(AVG(CAST(m.marks_obtained AS REAL) / m.total_marks * 100), 1) as performance
+      FROM students s
+      JOIN marks m ON s.id = m.student_id
+      WHERE m.subject = ?
+      GROUP BY s.id
+      ORDER BY performance DESC
+      LIMIT 5
+    `).all(teacher?.subject || 'Physics');
+
+    // Fallback if no entries yet for this subject
+    const displayTopStudents = topStudents.length > 0 ? topStudents : db.prepare(`
+      SELECT id, roll_number, full_name, class, group_name, portal, prev_percentage as performance
+      FROM students
+      ORDER BY prev_percentage DESC
+      LIMIT 5
+    `).all();
+
+    // Group marks by exam type for charts
+    const examPerformance = db.prepare(`
+      SELECT exam_type as label, ROUND(AVG(CAST(marks_obtained AS REAL) / total_marks * 100), 1) as value
+      FROM marks
+      WHERE subject = ?
+      GROUP BY exam_type
+    `).all(teacher?.subject || 'Physics');
+
+    // Attendance rates for teacher's view (past few days)
+    const teacherAttendance = db.prepare(`
+      SELECT date,
+             SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present,
+             COUNT(*) as total
+      FROM attendance
+      GROUP BY date
+      ORDER BY date DESC
+      LIMIT 5
+    `).all();
+
+    res.json({ 
+      teacher, 
+      students, 
+      marks,
+      topStudents: displayTopStudents,
+      examPerformance,
+      attendanceStats: teacherAttendance.reverse()
+    });
   });
 
   app.post("/api/marks/add", (req, res) => {
@@ -269,7 +436,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
